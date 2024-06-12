@@ -13,7 +13,7 @@ const client = new TradingView.Client(); // Creates a websocket client
 
 const chart = new client.Session.Chart(); // Init a Chart session
 
-chart.setMarket('BINANCE:BTCUSD', { // Set the market
+chart.setMarket('BINANCE:ETHUSD', { // Set the market  //ETHUSD  //SOLUSD
   timeframe: 'D',
 });
 
@@ -26,9 +26,17 @@ chart.onSymbolLoaded(() => { // When the symbol is successfully loaded
   console.log(`Market "${chart.infos.description}" loaded !`);
 });
 
-chart.onUpdate(() => {
+chart.onUpdate(async () => {
   const btcPrice = chart.periods[0].close;
+  console.log(typeof (btcPrice), btcPrice);
   latestPrice = btcPrice;
+  // const priceChangesbuy = calculatePriceChangesbuy(69299);
+  // console.log(priceChangesbuy);
+  // // const priceChangesSell = calculatePriceChangesSell(btcPrice);
+  //
+  // console.log('Price changes for BTC:');
+  //
+  // await processOrders(priceChangesbuy, true);
 
   if (!isProcessing) {
     processLatestPrice();
@@ -36,10 +44,10 @@ chart.onUpdate(() => {
 });
 
 const cancelPayload = async (orderId, isBuy) => {
-  let cancelPayload;
+  let cancel;
 
   if (isBuy) {
-    cancelPayload = {
+    cancel = {
       type: 'cancel',
       cancels: [{
         account: '0x1163DA866dEdC35104DCfBb378408A874dD14e20',
@@ -48,7 +56,7 @@ const cancelPayload = async (orderId, isBuy) => {
       signature: '0x9d2cc5a58fc8382e90fbeff57091b3886563ae50d7d6b29f1713d556a87f119638287197ad2e38b6ac2d9fa2e5173127fd12d2aee863c305dde7b3b767a8d8cd1b',
     };
   } else {
-    cancelPayload = {
+    cancel = {
       type: 'cancel',
       cancels: [{
         account: '0x04aCcaBEa3BEd9BBc13748e70040A5A1430Ecd5f',
@@ -63,7 +71,7 @@ const cancelPayload = async (orderId, isBuy) => {
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(cancelPayload),
+    body: JSON.stringify(cancel),
   });
   console.log(response);
 };
@@ -76,31 +84,31 @@ async function processLatestPrice() {
   isProcessing = true;
   const btcPrice = latestPrice;
   latestPrice = null; // Reset the latest price to null
-
-  if (lastProcessedPrice !== null) {
-    const priceChangePercentage = Math.abs((btcPrice - lastProcessedPrice) / lastProcessedPrice) * 100;
-    if (priceChangePercentage <= 1.5) {
-      isProcessing = false;
-      if (latestPrice !== null) {
-        processLatestPrice();
-      }
-      return;
-    }
-
-    orders.forEach(async (order) => {
-      await cancelPayload(order.id, order.isBuy);
-    });
-  }
+  runPriceChangeCalculationSell();
+  // if (lastProcessedPrice !== null) {
+  //   const priceChangePercentage = Math.abs((btcPrice - lastProcessedPrice) / lastProcessedPrice) * 100;
+  //   if (priceChangePercentage <= 1.5) {
+  //     isProcessing = false;
+  //     if (latestPrice !== null) {
+  //       processLatestPrice();
+  //     }
+  //     return;
+  //   }
+  //
+  //   //   orders.forEach(async (order) => {
+  //   //     await cancelPayload(order.id, order.isBuy);
+  //   //   });
+  //   // }
 
   lastProcessedPrice = btcPrice;
 
-  const priceChangesbuy = calculatePriceChangesbuy(btcPrice);
-  const priceChangesSell = calculatePriceChangesSell(btcPrice);
+  // const priceChangesbuy = calculatePriceChangesbuy(btcPrice);
+  // const priceChangesSell = calculatePriceChangesSell(btcPrice);
 
-  console.log('Price changes for BTC:');
+  // console.log('Price changes for BTC:');
 
-  await processOrders(priceChangesbuy, true);
-  await processOrders(priceChangesSell, false);
+  // await processOrders(priceChangesbuy, true);
+  // await processOrders(priceChangesSell, false);
 
   isProcessing = false;
 
@@ -109,20 +117,21 @@ async function processLatestPrice() {
     processLatestPrice();
   }
 }
-
+// }
 async function processOrders(priceChanges, isBuy) {
   for (const changeKey of Object.keys(priceChanges)) {
     const changeValue = priceChanges[changeKey];
+    console.log(changeKey, changeValue, 'me');
     const payload = {
       type: 'order',
       referralCode: null,
       orders: [
         {
-          account: '0x1163DA866dEdC35104DCfBb378408A874dD14e20',
-          indexToken: 'BTC',
+          account: '0x04aCcaBEa3BEd9BBc13748e70040A5A1430Ecd5f',
+          indexToken: 'SOL',
           isBuy,
           size: 1000,
-          leverage: 21.1,
+          leverage: 30,
           reduceOnly: false,
           orderType: {
             type: 'limit',
@@ -133,7 +142,7 @@ async function processOrders(priceChanges, isBuy) {
           },
         },
       ],
-      signature: '0x9d2cc5a58fc8382e90fbeff57091b3886563ae50d7d6b29f1713d556a87f119638287197ad2e38b6ac2d9fa2e5173127fd12d2aee863c305dde7b3b767a8d8cd1b',
+      signature: '0x9ceed76f5a3355cbc250504231a5cc4358b6243488977381ac49cb424a06bf684d0a5f0721472f6e2189ab183486f841c647a338e0f7f7f262ccd3b26dda578e1c',
     };
 
     try {
@@ -156,31 +165,87 @@ async function processOrders(priceChanges, isBuy) {
 }
 
 function calculatePriceChangesbuy(price) {
-  const percentChanges = [-0.01, -0.02, -0.03];
+  const dollarDecreases = Array.from({ length: 25 }, (_, i) => i + 1);
   const priceChanges = {};
 
-  percentChanges.forEach((change) => {
-    const changeKey = (change > 0 ? 'plus_' : 'minus_') + Math.abs(change).toString().replace('.', '_');
-    priceChanges[changeKey] = (price * (1 + change / 100)).toFixed(2);
+  dollarDecreases.forEach((decrease) => {
+    const changeKey = `minus_${decrease}_dollar`;
+    priceChanges[changeKey] = (price - decrease).toFixed(2);
   });
 
   return priceChanges;
 }
 
 function calculatePriceChangesSell(price) {
-  const percentChanges = [0.01, 0.02, 0.03];
+  const dollarIncreases = Array.from({ length: 25 }, (_, i) => i + 1);
   const priceChanges = {};
 
-  percentChanges.forEach((change) => {
-    const changeKey = (change > 0 ? 'plus_' : 'minus_') + Math.abs(change).toString().replace('.', '_');
-    priceChanges[changeKey] = (price * (1 + change / 100)).toFixed(2);
+  dollarIncreases.forEach((increase) => {
+    const changeKey = `plus_${increase}_dollar`;
+    priceChanges[changeKey] = (price + increase).toFixed(2);
   });
 
   return priceChanges;
 }
 
-// Wait 25 seconds and close the client
-// setTimeout(() => {
-//   console.log('\nClosing the client...');
-//   client.end();
-// }, 25000)
+// function calculatePriceChangesSell(price) {
+//   const percentChanges = [0.01, 0.02, 0.03];
+//   const priceChanges = {};
+//
+//   percentChanges.forEach((change) => {
+//     const changeKey = (change > 0 ? 'plus_' : 'minus_') + Math.abs(change).toString().replace('.', '_');
+//     priceChanges[changeKey] = (price * (1 + change / 100)).toFixed(2);
+//   });
+//
+//   return priceChanges;
+// }
+//
+//
+//
+//
+
+async function runPriceChangeCalculation() {
+  try {
+    const btcPrice = chart.periods[0].close;
+    // console.log(typeof (btcPrice), btcPrice);
+    // latestPrice = btcPrice;
+    const priceChangesbuy = calculatePriceChangesbuy(btcPrice);
+    console.log(priceChangesbuy);
+    // const priceChangesSell = calculatePriceChangesSell(btcPrice);
+
+    console.log('Price changes for BTC:');
+
+    await processOrders(priceChangesbuy, true);
+
+    // if (!isProcessing) {
+    //   processLatestPrice();
+    // }
+  } catch (error) {
+    console.error('Error running price change calculation:', error);
+  }
+}
+
+async function runPriceChangeCalculationSell() {
+  try {
+    const btcPrice = chart.periods[0].close;
+    // console.log(typeof (btcPrice), btcPrice);
+    // latestPrice = btcPrice;
+    // const priceChangesbuy = calculatePriceChangesbuy(160);
+    const priceChangesSell = calculatePriceChangesSell(159);
+    console.log(priceChangesSell);
+    // const priceChangesSell = calculatePriceChangesSell(btcPrice);
+
+    console.log('Price changes for BTC:');
+
+    // await processOrders(priceChangesbuy, true);
+    await processOrders(priceChangesSell, false);
+
+    // if (!isProcessing) {
+    //   processLatestPrice();
+    // }
+  } catch (error) {
+    console.error('Error running price change calculation:', error);
+  }
+}
+
+// runPriceChangeCalculationSell();
